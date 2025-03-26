@@ -2,9 +2,9 @@
 
 // Database Configuration (using environment variables for Render.com)
 $dbHost = "dpg-cvi55i5umphs73cv8hd0-a"; // Explicitly set the DB_HOST
-$dbUser = getenv('DB_USER');
-$dbPass = getenv('DB_PASSWORD');
-$dbName = getenv('DB_NAME');
+$dbUser = getenv('database_7riv_user');
+$dbPass = getenv('V3ZlsQPXEqE38L84qhfE1mnjmWvHTZgi');
+$dbName = getenv('database');
 
 try {
     $pdo = new PDO("mysql:host=$dbHost;dbname=$dbName", $dbUser, $dbPass);
