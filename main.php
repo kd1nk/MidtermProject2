@@ -1,7 +1,7 @@
 <?php
 
 // Database Configuration (using environment variables for Render.com)
-$dbHost = ("dpg-cvi55i5umphs73cv8hd0-a:5432") // Explicitly set the DB_HOST
+$dbHost = "dpg-cvi55i5umphs73cv8hd0-a:5432"; // Explicitly set the DB_HOST
 $dbUser = getenv('database_7riv_user');
 $dbPass = getenv('V3ZlsQPXEqE38L84qhfE1mnjmWvHTZgi');
 $dbName = getenv('database');
