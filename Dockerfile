@@ -10,6 +10,10 @@ RUN apt-get update && apt-get install -y \
 # Copy the PHP application files to the container
 COPY . /var/www/html/
 
+# Adjust file permissions
+RUN chown -R www-data:www-data /var/www/html/
+RUN chmod -R 755 /var/www/html/
+
 # Set environment variables for database connection (Render.com)
 ENV DB_HOST=${DB_HOST}
 ENV DB_USER=${DB_USER}
