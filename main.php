@@ -1,271 +1,409 @@
 <?php
 
-// Database Configuration (using environment variables for Render.com)
+// Database Configuration (using environment variables and explicit host)
 $dbHost = "dpg-cvi55i5umphs73cv8hd0-a:5432"; // Explicitly set the DB_HOST
 $dbUser = getenv('database_7riv_user');
 $dbPass = getenv('V3ZlsQPXEqE38L84qhfE1mnjmWvHTZgi');
 $dbName = getenv('database');
 
-try {
-    $pdo = new PDO("mysql:host=$dbHost;dbname=$dbName", $dbUser, $dbPass);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-} catch (PDOException $e) {
-    echo json_encode(['message' => 'Database connection failed: ' . $e->getMessage()]);
-    exit;
+// Database Connection (PostgreSQL)
+$connStr = "host=$dbHost dbname=$dbName user=$dbUser password=$dbPass";
+$conn = pg_connect($connStr);
+
+if (!$conn) {
+    http_response_code(500); // Internal Server Error
+    echo json_encode(['message' => 'Database Connection Failed: ' . pg_last_error()]);
+    exit; // Stop execution
 }
 
-// Helper Functions (same as before)
-function getQuotes($pdo, $params = []) {
-    $sql = "SELECT quotes.id, quotes.quote, authors.author, categories.category FROM quotes JOIN authors ON quotes.author_id = authors.id JOIN categories ON quotes.category_id = categories.id";
+// Helper Functions (PostgreSQL)
+function getQuotes($conn, $params = []) {
+    $sql = "SELECT q.id, q.quote, a.author, c.category 
+            FROM quotes q
+            JOIN authors a ON q.author_id = a.id 
+            JOIN categories c ON q.category_id = c.id";
     $where = [];
-    foreach ($params as $key => $value) {
-        $where[] = "$key = :$key";
+    $paramValues = [];
+    if (isset($params['id'])) {
+        $where[] = "q.id = $1";
+        $paramValues[] = $params['id'];
+    }
+    if (isset($params['author_id'])) {
+        $where[] = "q.author_id = $" . (count($paramValues) + 1);
+        $paramValues[] = $params['author_id'];
+    }
+    if (isset($params['category_id'])) {
+        $where[] = "q.category_id = $" . (count($paramValues) + 1);
+        $paramValues[] = $params['category_id'];
     }
     if (!empty($where)) {
         $sql .= " WHERE " . implode(" AND ", $where);
     }
-    $stmt = $pdo->prepare($sql);
-    foreach ($params as $key => $value) {
-        $stmt->bindValue(":$key", $value);
+    $sql =  $sql . " ORDER BY q.id";
+    $result = pg_query_params($conn, $sql, $paramValues);
+    if ($result && pg_num_rows($result) > 0) {
+        $quotes = [];
+        while ($row = pg_fetch_assoc($result)) {
+            $quotes[] = $row;
+        }
+        pg_free_result($result);
+        return $quotes;
+    } else {
+        pg_free_result($result);
+        return false;
     }
-    $stmt->execute();
-    return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
-function getAuthors($pdo, $params = []) {
+function getAuthors($conn, $params = []) {
     $sql = "SELECT id, author FROM authors";
-    $where = [];
-    foreach ($params as $key => $value) {
-        $where[] = "$key = :$key";
+    $paramValues = [];
+    if (isset($params['id'])) {
+        $sql .= " WHERE id = $1";
+        $paramValues[] = $params['id'];
     }
-    if (!empty($where)) {
-        $sql .= " WHERE " . implode(" AND ", $where);
+    $sql = $sql . " ORDER BY id";
+    $result = pg_query_params($conn, $sql, $paramValues);
+    if ($result && pg_num_rows($result) > 0) {
+        $authors = [];
+        while ($row = pg_fetch_assoc($result)) {
+            $authors[] = $row;
+        }
+        pg_free_result($result);
+        return $authors;
+    } else {
+        pg_free_result($result);
+        return false;
     }
-    $stmt = $pdo->prepare($sql);
-    foreach ($params as $key => $value) {
-        $stmt->bindValue(":$key", $value);
-    }
-    $stmt->execute();
-    return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
-function getCategories($pdo, $params = []) {
+function getCategories($conn, $params = []) {
     $sql = "SELECT id, category FROM categories";
-    $where = [];
-    foreach ($params as $key => $value) {
-        $where[] = "$key = :$key";
+    $paramValues = [];
+    if (isset($params['id'])) {
+        $sql .= " WHERE id = $1";
+        $paramValues[] = $params['id'];
     }
-    if (!empty($where)) {
-        $sql .= " WHERE " . implode(" AND ", $where);
+    $sql = $sql . " ORDER BY id";
+    $result = pg_query_params($conn, $sql, $paramValues);
+    if ($result && pg_num_rows($result) > 0) {
+        $categories = [];
+        while ($row = pg_fetch_assoc($result)) {
+            $categories[] = $row;
+        }
+        pg_free_result($result);
+        return $categories;
+    } else {
+        pg_free_result($result);
+        return false;
     }
-    $stmt = $pdo->prepare($sql);
-    foreach ($params as $key => $value) {
-        $stmt->bindValue(":$key", $value);
-    }
-    $stmt->execute();
-    return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
-function createQuote($pdo, $data) {
-    if (!isset($data['quote'], $data['author_id'], $data['category_id'])) {
+function authorExists($conn, $author_id) {
+    $sql = "SELECT id FROM authors WHERE id = $1";
+    $result = pg_query_params($conn, $sql, [$author_id]);
+    $exists = $result && pg_num_rows($result) > 0;
+    pg_free_result($result);
+    return $exists;
+}
+
+function categoryExists($conn, $category_id) {
+    $sql = "SELECT id FROM categories WHERE id = $1";
+    $result = pg_query_params($conn, $sql, [$category_id]);
+    $exists = $result && pg_num_rows($result) > 0;
+    pg_free_result($result);
+    return $exists;
+}
+
+function createQuote($conn, $data) {
+    if (!isset($data['quote']) || !isset($data['author_id']) || !isset($data['category_id'])) {
+        http_response_code(400); // Bad Request
         return ['message' => 'Missing Required Parameters'];
     }
-    $authorExists = getAuthors($pdo, ['id' => $data['author_id']]);
-    if (empty($authorExists)) {
+
+    if (!authorExists($conn, $data['author_id'])) {
+        http_response_code(404); // Not Found
         return ['message' => 'author_id Not Found'];
     }
-    $categoryExists = getCategories($pdo, ['id' => $data['category_id']]);
-    if (empty($categoryExists)) {
+    if (!categoryExists($conn, $data['category_id'])) {
+        http_response_code(404); // Not Found
         return ['message' => 'category_id Not Found'];
     }
-    $stmt = $pdo->prepare("INSERT INTO quotes (quote, author_id, category_id) VALUES (:quote, :author_id, :category_id)");
-    $stmt->execute(['quote' => $data['quote'], 'author_id' => $data['author_id'], 'category_id' => $data['category_id']]);
-    return ['id' => $pdo->lastInsertId(), 'quote' => $data['quote'], 'author_id' => $data['author_id'], 'category_id' => $data['category_id']];
+
+    $sql = "INSERT INTO quotes (quote, author_id, category_id) VALUES ($1, $2, $3) RETURNING id";
+    $result = pg_query_params($conn, $sql, [$data['quote'], $data['author_id'], $data['category_id']]);
+
+    if ($result && pg_num_rows($result) > 0) {
+        $row = pg_fetch_assoc($result);
+        $resultData = ['id' => $row['id'], 'quote' => $data['quote'], 'author_id' => $data['author_id'], 'category_id' => $data['category_id']];
+        pg_free_result($result);
+        return $resultData;
+    } else {
+        http_response_code(500);
+        return ['message' => 'Error: ' . pg_last_error()];
+    }
 }
 
-function createAuthor($pdo, $data) {
+function createAuthor($conn, $data) {
     if (!isset($data['author'])) {
+        http_response_code(400);
         return ['message' => 'Missing Required Parameters'];
     }
-    $stmt = $pdo->prepare("INSERT INTO authors (author) VALUES (:author)");
-    $stmt->execute(['author' => $data['author']]);
-    return ['id' => $pdo->lastInsertId(), 'author' => $data['author']];
+
+    $sql = "INSERT INTO authors (author) VALUES ($1) RETURNING id";
+    $result = pg_query_params($conn, $sql, [$data['author']]);
+
+    if ($result && pg_num_rows($result) > 0) {
+        $row = pg_fetch_assoc($result);
+        $resultData = ['id' => $row['id'], 'author' => $data['author']];
+        pg_free_result($result);
+        return $resultData;
+    } else {
+        http_response_code(500);
+        return ['message' => 'Error: ' . pg_last_error()];
+    }
 }
 
-function createCategory($pdo, $data) {
+function createCategory($conn, $data) {
     if (!isset($data['category'])) {
+        http_response_code(400);
         return ['message' => 'Missing Required Parameters'];
     }
-    $stmt = $pdo->prepare("INSERT INTO categories (category) VALUES (:category)");
-    $stmt->execute(['category' => $data['category']]);
-    return ['id' => $pdo->lastInsertId(), 'category' => $data['category']];
+    $sql = "INSERT INTO categories (category) VALUES ($1) RETURNING id";
+    $result = pg_query_params($conn, $sql, [$data['category']]);
+    if ($result && pg_num_rows($result) > 0) {
+        $row = pg_fetch_assoc($result);
+        $resultData = ['id' => $row['id'], 'category' => $data['category']];
+        pg_free_result($result);
+        return $resultData;
+    } else {
+        http_response_code(500);
+        return ['message' => 'Error: ' . pg_last_error()];
+    }
 }
 
-function updateQuote($pdo, $data) {
-    if (!isset($data['id'], $data['quote'], $data['author_id'], $data['category_id'])) {
+function updateQuote($conn, $data) {
+    if (!isset($data['id']) || !isset($data['quote']) || !isset($data['author_id']) || !isset($data['category_id'])) {
+        http_response_code(400); // Bad Request
         return ['message' => 'Missing Required Parameters'];
     }
-    $quoteExists = getQuotes($pdo, ['id' => $data['id']]);
-    if (empty($quoteExists)) {
+
+    if (!authorExists($conn, $data['author_id'])) {
+        http_response_code(404); // Not Found
+        return ['message' => 'author_id Not Found'];
+    }
+    if (!categoryExists($conn, $data['category_id'])) {
+        http_response_code(404); // Not Found
+        return ['message' => 'category_id Not Found'];
+    }
+
+    $sql = "UPDATE quotes SET quote = $1, author_id = $2, category_id = $3 WHERE id = $4";
+    $result = pg_query_params($conn, $sql, [$data['quote'], $data['author_id'], $data['category_id'], $data['id']]);
+
+    if ($result) {
+        $resultData = ['id' => $data['id'], 'quote' => $data['quote'], 'author_id' => $data['author_id'], 'category_id' => $data['category_id']];
+        return $resultData;
+    } else {
+        http_response_code(404);
         return ['message' => 'No Quotes Found'];
     }
-    $authorExists = getAuthors($pdo, ['id' => $data['author_id']]);
-    if (empty($authorExists)) {
-        return ['message' => 'author_id Not Found'];
-    }
-    $categoryExists = getCategories($pdo, ['id' => $data['category_id']]);
-    if (empty($categoryExists)) {
-        return ['message' => 'category_id Not Found'];
-    }
-    $stmt = $pdo->prepare("UPDATE quotes SET quote = :quote, author_id = :author_id, category_id = :category_id WHERE id = :id");
-    $stmt->execute(['id' => $data['id'], 'quote' => $data['quote'], 'author_id' => $data['author_id'], 'category_id' => $data['category_id']]);
-    return ['id' => $data['id'], 'quote' => $data['quote'], 'author_id' => $data['author_id'], 'category_id' => $data['category_id']];
 }
 
-function updateAuthor($pdo, $data) {
-    if (!isset($data['id'], $data['author'])) {
+function updateAuthor($conn, $data) {
+    if (!isset($data['id']) || !isset($data['author'])) {
+        http_response_code(400);
         return ['message' => 'Missing Required Parameters'];
     }
-    $authorExists = getAuthors($pdo, ['id' => $data['id']]);
-    if (empty($authorExists)) {
-        return ['message' => 'author_id Not Found'];
+    $sql = "UPDATE authors SET author = $1 WHERE id = $2";
+    $result = pg_query_params($conn, $sql, [$data['author'], $data['id']]);
+    if ($result) {
+        $resultData = ['id' => $data['id'], 'author' => $data['author']];
+        return $resultData;
+    } else {
+        http_response_code(404);
+        return ['message' => 'No Authors Found'];
     }
-    $stmt = $pdo->prepare("UPDATE authors SET author = :author WHERE id = :id");
-    $stmt->execute(['id' => $data['id'], 'author' => $data['author']]);
-    return ['id' => $data['id'], 'author' => $data['author']];
 }
 
-function updateCategory($pdo, $data) {
-    if (!isset($data['id'], $data['category'])) {
+function updateCategory($conn, $data) {
+    if (!isset($data['id']) || !isset($data['category'])) {
+        http_response_code(400);
         return ['message' => 'Missing Required Parameters'];
     }
-    $categoryExists = getCategories($pdo, ['id' => $data['id']]);
-    if (empty($categoryExists)) {
-        return ['message' => 'category_id Not Found'];
+    $sql = "UPDATE categories SET category = $1 WHERE id = $2";
+    $result = pg_query_params($conn, $sql, [$data['category'], $data['id']]);
+    if ($result) {
+        $resultData = ['id' => $data['id'], 'category' => $data['category']];
+        return $resultData;
+    } else {
+        http_response_code(404);
+        return ['message' => 'No Categories Found'];
     }
-    $stmt = $pdo->prepare("UPDATE categories SET category = :category WHERE id = :id");
-    $stmt->execute(['id' => $data['id'], 'category' => $data['category']]);
-    return ['id' => $data['id'], 'category' => $data['category']];
 }
 
-function deleteQuote($pdo, $id) {
-    $quoteExists = getQuotes($pdo, ['id' => $id]);
-    if (empty($quoteExists)) {
+function deleteQuote($conn, $id) {
+    $sql = "DELETE FROM quotes WHERE id = $1";
+    $result = pg_query_params($conn, $sql, [$id]);
+    if ($result) {
+        $resultData = ['id' => $id];
+        return $resultData;
+    } else {
+        http_response_code(404);
         return ['message' => 'No Quotes Found'];
     }
-    $stmt = $pdo->prepare("DELETE FROM quotes WHERE id = :id");
-    $stmt->execute(['id' => $id]);
-    return ['id' => $id];
 }
 
-function deleteAuthor($pdo, $id) {
-    $authorExists = getAuthors($pdo, ['id' => $id]);
-    if (empty($authorExists)) {
-        return ['message' => 'author_id Not Found'];
+function deleteAuthor($conn, $id) {
+    $sql = "DELETE FROM authors WHERE id = $1";
+    $result = pg_query_params($conn, $sql, [$id]);
+    if ($result) {
+        $resultData = ['id' => $id];
+        return $resultData;
+    } else {
+        http_response_code(404);
+        return ['message' => 'No Authors Found'];
     }
-    $stmt = $pdo->prepare("DELETE FROM authors WHERE id = :id");
-    $stmt->execute(['id' => $id]);
-    return ['id' => $id];
 }
 
-function deleteCategory($pdo, $id) {
-    $categoryExists = getCategories($pdo, ['id' => $id]);
-    if (empty($categoryExists)) {
-        return ['message' => 'category_id Not Found'];
+function deleteCategory($conn, $id) {
+    $sql = "DELETE FROM categories WHERE id = $1";
+    $result = pg_query_params($conn, $sql, [$id]);
+    if ($result) {
+        $resultData = ['id' => $id];
+        return $resultData;
+    } else {
+        http_response_code(404);
+        return ['message' => 'No Categories Found'];
     }
-    $stmt = $pdo->prepare("DELETE FROM categories WHERE id = :id");
-    $stmt->execute(['id' => $id]);
-    return ['id' => $id];
 }
 
-// Routing
+// Routing and Request Handling
 $requestUri = $_SERVER['REQUEST_URI'];
-$method = $_SERVER['REQUEST_METHOD'];
-
-// Remove the /api part from the URI
-$requestUri = str_replace('/api', '', $requestUri);
-
-$params = [];
-$queryString = $_SERVER['QUERY_STRING'];
-if (!empty($queryString)) {
-    parse_str($queryString, $params);
-}
+$requestMethod = $_SERVER['REQUEST_METHOD'];
+$uriParts = explode('/', trim(str_replace('/api', '', $requestUri), '/'));
 
 header('Content-Type: application/json');
 
-switch (true) {
-    case (preg_match('/^\/quotes\/?$/', $requestUri) && $method === 'GET'):
-        if (empty($params)) {
-            echo json_encode(getQuotes($pdo));
-        } else {
-            echo json_encode(getQuotes($pdo, $params));
-        }
+switch ($uriParts[0]) {
+    case 'quotes':
+        handleQuotesRequest($conn, $requestMethod, $uriParts);
         break;
-
-    case (preg_match('/^\/authors\/?$/', $requestUri) && $method === 'GET'):
-        if (empty($params)) {
-            echo json_encode(getAuthors($pdo));
-        } else {
-            echo json_encode(getAuthors($pdo, $params));
-        }
+    case 'authors':
+        handleAuthorsRequest($conn, $requestMethod, $uriParts);
         break;
-
-    case (preg_match('/^\/categories\/?$/', $requestUri) && $method === 'GET'):
-        if (empty($params)) {
-            echo json_encode(getCategories($pdo));
-        } else {
-            echo json_encode(getCategories($pdo, $params));
-        }
+    case 'categories':
+        handleCategoriesRequest($conn, $requestMethod, $uriParts);
         break;
-
-    case (preg_match('/^\/quotes\/?$/', $requestUri) && $method === 'POST'):
-        $data = json_decode(file_get_contents('php://input'), true);
-        echo json_encode(createQuote($pdo, $data));
-        break;
-
-    case (preg_match('/^\/authors\/?$/', $requestUri) && $method === 'POST'):
-        $data = json_decode(file_get_contents('php://input'), true);
-        echo json_encode(createAuthor($pdo, $data));
-        break;
-
-    case (preg_match('/^\/categories\/?$/', $requestUri) && $method === 'POST'):
-        $data = json_decode(file_get_contents('php://input'), true);
-        echo json_encode(createCategory($pdo, $data));
-        break;
-
-    case (preg_match('/^\/quotes\/?$/', $requestUri) && $method === 'PUT'):
-        $data = json_decode(file_get_contents('php://input'), true);
-        echo json_encode(updateQuote($pdo, $data));
-        break;
-
-    case (preg_match('/^\/authors\/?$/', $requestUri) && $method === 'PUT'):
-        $data = json_decode(file_get_contents('php://input'), true);
-        echo json_encode(updateAuthor($pdo, $data));
-        break;
-
-    case (preg_match('/^\/categories\/?$/', $requestUri) && $method === 'PUT'):
-        $data = json_decode(file_get_contents('php://input'), true);
-        echo json_encode(updateCategory($pdo, $data));
-        break;
-
-    case (preg_match('/^\/quotes\/?$/', $requestUri) && $method === 'DELETE'):
-        $data = json_decode(file_get_contents('php://input'), true);
-        echo json_encode(deleteQuote($pdo, $data['id']));
-        break;
-
-    case (preg_match('/^\/authors\/?$/', $requestUri) && $method === 'DELETE'):
-        $data = json_decode(file_get_contents('php://input'), true);
-        echo json_encode(deleteAuthor($pdo, $data['id']));
-        break;
-
-    case (preg_match('/^\/categories\/?$/', $requestUri) && $method === 'DELETE'):
-        $data = json_decode(file_get_contents('php://input'), true);
-        echo json_encode(deleteCategory($pdo, $data['id']));
-        break;
-
     default:
         http_response_code(404);
-        echo json_encode(['message' => 'Route Not Found']);
+        echo json_encode(['message' => 'Not Found']);
         break;
 }
+
+pg_close($conn);
+
+function handleQuotesRequest($conn, $method, $uriParts) {
+    switch ($method) {
+        case 'GET':
+            $params = $_GET;
+            if (empty($params)) {
+                $result = getQuotes($conn);
+            } else {
+                $result = getQuotes($conn, $params);
+            }
+            if ($result) {
+                echo json_encode($result);
+            } else {
+                http_response_code(404);
+                echo json_encode(['message' => 'No Quotes Found']);
+            }
+            break;
+        case 'POST':
+            $data = json_decode(file_get_contents('php://input'), true);
+            echo json_encode(createQuote($conn, $data));
+            break;
+        case 'PUT':
+            $data = json_decode(file_get_contents('php://input'), true);
+            echo json_encode(updateQuote($conn, $data));
+            break;
+        case 'DELETE':
+            if (isset($uriParts[1]) && is_numeric($uriParts[1])) {
+                echo json_encode(deleteQuote($conn, $uriParts[1]));
+            } else {
+                http_response_code(400);
+                echo json_encode(['message' => 'Missing ID parameter']);
+            }
+            break;
+    }
+}
+
+function handleAuthorsRequest($conn, $method, $uriParts) {
+    switch ($method) {
+        case 'GET':
+            $params = $_GET;
+            if (empty($params)) {
+                $result = getAuthors($conn);
+            } else {
+                $result = getAuthors($conn, $params);
+            }
+            if ($result) {
+                echo json_encode($result);
+            } else {
+                http_response_code(404);
+                echo json_encode(['message' => 'author_id Not Found']);
+            }
+            break;
+        case 'POST':
+            $data = json_decode(file_get_contents('php://input'), true);
+            echo json_encode(createAuthor($conn, $data));
+            break;
+        case 'PUT':
+            $data = json_decode(file_get_contents('php://input'), true);
+            echo json_encode(updateAuthor($conn, $data));
+            break;
+        case 'DELETE':
+            if (isset($uriParts[1]) && is_numeric($uriParts[1])) {
+                echo json_encode(deleteAuthor($conn, $uriParts[1]));
+            } else {
+                http_response_code(400);
+                echo json_encode(['message' => 'Missing ID parameter']);
+            }
+            break;
+    }
+}
+
+function handleCategoriesRequest($conn, $method, $uriParts) {
+    switch ($method) {
+        case 'GET':
+            $params = $_GET;
+            if (empty($params)) {
+                $result = getCategories($conn);
+            } else {
+                $result = getCategories($conn, $params);
+            }
+            if ($result) {
+                echo json_encode($result);
+            } else {
+                http_response_code(404);
+                echo json_encode(['message' => 'category_id Not Found']);
+            }
+            break;
+        case 'POST':
+            $data = json_decode(file_get_contents('php://input'), true);
+            echo json_encode(createCategory($conn, $data));
+            break;
+        case 'PUT':
+            $data = json_decode(file_get_contents('php://input'), true);
+            echo json_encode(updateCategory($conn, $data));
+            break;
+        case 'DELETE':
+            if (isset($uriParts[1]) && is_numeric($uriParts[1])) {
+                echo json_encode(deleteCategory($conn, $uriParts[1]));
+            } else {
+                http_response_code(400);
+                echo json_encode(['message' => 'Missing ID parameter']);
+            }
+            break;
+    }
+}
 ?>
+
