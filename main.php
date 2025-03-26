@@ -8,7 +8,6 @@ $dbName = getenv('database');
 
 // Database Connection (PostgreSQL)
 $connStr = "host=$dbHost dbname=$dbName user=$dbUser password=$dbPass";
-$conn = pg_connect($connStr);
 
 if (!$conn) {
     echo "Connection failed: " . pg_last_error();
