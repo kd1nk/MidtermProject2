@@ -4,7 +4,7 @@
 $dbHost = "dpg-cvi55i5umphs73cv8hd0-a:5432" // Explicitly set the DB_HOST
 $dbUser = getenv('database_7riv_user');
 $dbPass = getenv('V3ZlsQPXEqE38L84qhfE1mnjmWvHTZgi');
-$dbName = getenv'database');
+$dbName = getenv('database');
 
 try {
     $pdo = new PDO("mysql:host=$dbHost;dbname=$dbName", $dbUser, $dbPass);
