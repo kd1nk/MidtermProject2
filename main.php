@@ -1,5 +1,4 @@
 <?php
-
 // Database Configuration (using environment variables and explicit host)
 $dbHost = "dpg-cvi55i5umphs73cv8hd0-a:5432"; // Explicitly set the DB_HOST
 $dbUser = getenv('database_7riv_user');
@@ -395,3 +394,4 @@ function handleCategoriesRequest($conn, $method, $uriParts)
     }
 }
 ?>
+
