@@ -11,8 +11,8 @@ RUN apt-get update && apt-get install -y \
 COPY . /var/www/html/
 
 # Adjust file permissions
-RUN chown -R www-data:www-data /var/www/php/
-RUN chmod -R 755 /var/www/php/
+RUN chown -R www-data:www-data /var/www/html/
+RUN chmod -R 755 /var/www/html/
 
 # Set environment variables for database connection (Render.com)
 ENV DB_HOST=${DB_HOST}
