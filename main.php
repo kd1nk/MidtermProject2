@@ -11,13 +11,17 @@ $connStr = "host=$dbHost dbname=$dbName user=$dbUser password=$dbPass";
 $conn = pg_connect($connStr);
 
 if (!$conn) {
-    http_response_code(500); // Internal Server Error
-    echo json_encode(['message' => 'Database Connection Failed: ' . pg_last_error()]);
-    exit; // Stop execution
+    echo "Connection failed: " . pg_last_error();
+    // It's important to stop execution here if the connection fails.
+    exit;
+} else {
+    echo "Successfully connected to PostgreSQL!<br>"; //Added a br tag
+    //  pg_close($conn); //Don't close connection here, because we are using it later
 }
 
 // Helper Functions (PostgreSQL)
-function getQuotes($conn, $params = []) {
+function getQuotes($conn, $params = [])
+{
     $sql = "SELECT q.id, q.quote, a.author, c.category 
             FROM quotes q
             JOIN authors a ON q.author_id = a.id 
@@ -54,7 +58,8 @@ function getQuotes($conn, $params = []) {
     }
 }
 
-function getAuthors($conn, $params = []) {
+function getAuthors($conn, $params = [])
+{
     $sql = "SELECT id, author FROM authors";
     $paramValues = [];
     if (isset($params['id'])) {
@@ -76,7 +81,8 @@ function getAuthors($conn, $params = []) {
     }
 }
 
-function getCategories($conn, $params = []) {
+function getCategories($conn, $params = [])
+{
     $sql = "SELECT id, category FROM categories";
     $paramValues = [];
     if (isset($params['id'])) {
@@ -98,7 +104,8 @@ function getCategories($conn, $params = []) {
     }
 }
 
-function authorExists($conn, $author_id) {
+function authorExists($conn, $author_id)
+{
     $sql = "SELECT id FROM authors WHERE id = $1";
     $result = pg_query_params($conn, $sql, [$author_id]);
     $exists = $result && pg_num_rows($result) > 0;
@@ -106,7 +113,8 @@ function authorExists($conn, $author_id) {
     return $exists;
 }
 
-function categoryExists($conn, $category_id) {
+function categoryExists($conn, $category_id)
+{
     $sql = "SELECT id FROM categories WHERE id = $1";
     $result = pg_query_params($conn, $sql, [$category_id]);
     $exists = $result && pg_num_rows($result) > 0;
@@ -114,7 +122,8 @@ function categoryExists($conn, $category_id) {
     return $exists;
 }
 
-function createQuote($conn, $data) {
+function createQuote($conn, $data)
+{
     if (!isset($data['quote']) || !isset($data['author_id']) || !isset($data['category_id'])) {
         http_response_code(400); // Bad Request
         return ['message' => 'Missing Required Parameters'];
@@ -143,7 +152,8 @@ function createQuote($conn, $data) {
     }
 }
 
-function createAuthor($conn, $data) {
+function createAuthor($conn, $data)
+{
     if (!isset($data['author'])) {
         http_response_code(400);
         return ['message' => 'Missing Required Parameters'];
@@ -163,7 +173,8 @@ function createAuthor($conn, $data) {
     }
 }
 
-function createCategory($conn, $data) {
+function createCategory($conn, $data)
+{
     if (!isset($data['category'])) {
         http_response_code(400);
         return ['message' => 'Missing Required Parameters'];
@@ -181,7 +192,8 @@ function createCategory($conn, $data) {
     }
 }
 
-function updateQuote($conn, $data) {
+function updateQuote($conn, $data)
+{
     if (!isset($data['id']) || !isset($data['quote']) || !isset($data['author_id']) || !isset($data['category_id'])) {
         http_response_code(400); // Bad Request
         return ['message' => 'Missing Required Parameters'];
@@ -208,7 +220,8 @@ function updateQuote($conn, $data) {
     }
 }
 
-function updateAuthor($conn, $data) {
+function updateAuthor($conn, $data)
+{
     if (!isset($data['id']) || !isset($data['author'])) {
         http_response_code(400);
         return ['message' => 'Missing Required Parameters'];
@@ -224,7 +237,8 @@ function updateAuthor($conn, $data) {
     }
 }
 
-function updateCategory($conn, $data) {
+function updateCategory($conn, $data)
+{
     if (!isset($data['id']) || !isset($data['category'])) {
         http_response_code(400);
         return ['message' => 'Missing Required Parameters'];
@@ -240,7 +254,8 @@ function updateCategory($conn, $data) {
     }
 }
 
-function deleteQuote($conn, $id) {
+function deleteQuote($conn, $id)
+{
     $sql = "DELETE FROM quotes WHERE id = $1";
     $result = pg_query_params($conn, $sql, [$id]);
     if ($result) {
@@ -252,7 +267,8 @@ function deleteQuote($conn, $id) {
     }
 }
 
-function deleteAuthor($conn, $id) {
+function deleteAuthor($conn, $id)
+{
     $sql = "DELETE FROM authors WHERE id = $1";
     $result = pg_query_params($conn, $sql, [$id]);
     if ($result) {
@@ -264,7 +280,8 @@ function deleteAuthor($conn, $id) {
     }
 }
 
-function deleteCategory($conn, $id) {
+function deleteCategory($conn, $id)
+{
     $sql = "DELETE FROM categories WHERE id = $1";
     $result = pg_query_params($conn, $sql, [$id]);
     if ($result) {
@@ -299,9 +316,10 @@ switch ($uriParts[0]) {
         break;
 }
 
-pg_close($conn);
+pg_close($conn);  // Close the connection at the end of the script.
 
-function handleQuotesRequest($conn, $method, $uriParts) {
+function handleQuotesRequest($conn, $method, $uriParts)
+{
     switch ($method) {
         case 'GET':
             $params = $_GET;
@@ -336,7 +354,8 @@ function handleQuotesRequest($conn, $method, $uriParts) {
     }
 }
 
-function handleAuthorsRequest($conn, $method, $uriParts) {
+function handleAuthorsRequest($conn, $method, $uriParts)
+{
     switch ($method) {
         case 'GET':
             $params = $_GET;
@@ -371,7 +390,8 @@ function handleAuthorsRequest($conn, $method, $uriParts) {
     }
 }
 
-function handleCategoriesRequest($conn, $method, $uriParts) {
+function handleCategoriesRequest($conn, $method, $uriParts)
+{
     switch ($method) {
         case 'GET':
             $params = $_GET;
@@ -405,5 +425,6 @@ function handleCategoriesRequest($conn, $method, $uriParts) {
             break;
     }
 }
+
 ?>
 
