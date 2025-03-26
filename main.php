@@ -171,5 +171,101 @@ function deleteAuthor($pdo, $id) {
 function deleteCategory($pdo, $id) {
     $categoryExists = getCategories($pdo, ['id' => $id]);
     if (empty($categoryExists)) {
-?>
+        return ['message' => 'category_id Not Found'];
+    }
+    $stmt = $pdo->prepare("DELETE FROM categories WHERE id = :id");
+    $stmt->execute(['id' => $id]);
+    return ['id' => $id];
+}
+
+// Routing
+$requestUri = $_SERVER['REQUEST_URI'];
+$method = $_SERVER['REQUEST_METHOD'];
+
+// Remove the /api part from the URI
+$requestUri = str_replace('/api', '', $requestUri);
+
+$params = [];
+$queryString = $_SERVER['QUERY_STRING'];
+if (!empty($queryString)) {
+    parse_str($queryString, $params);
+}
+
+header('Content-Type: application/json');
+
+switch (true) {
+    case (preg_match('/^\/quotes\/?$/', $requestUri) && $method === 'GET'):
+        if (empty($params)) {
+            echo json_encode(getQuotes($pdo));
+        } else {
+            echo json_encode(getQuotes($pdo, $params));
         }
+        break;
+
+    case (preg_match('/^\/authors\/?$/', $requestUri) && $method === 'GET'):
+        if (empty($params)) {
+            echo json_encode(getAuthors($pdo));
+        } else {
+            echo json_encode(getAuthors($pdo, $params));
+        }
+        break;
+
+    case (preg_match('/^\/categories\/?$/', $requestUri) && $method === 'GET'):
+        if (empty($params)) {
+            echo json_encode(getCategories($pdo));
+        } else {
+            echo json_encode(getCategories($pdo, $params));
+        }
+        break;
+
+    case (preg_match('/^\/quotes\/?$/', $requestUri) && $method === 'POST'):
+        $data = json_decode(file_get_contents('php://input'), true);
+        echo json_encode(createQuote($pdo, $data));
+        break;
+
+    case (preg_match('/^\/authors\/?$/', $requestUri) && $method === 'POST'):
+        $data = json_decode(file_get_contents('php://input'), true);
+        echo json_encode(createAuthor($pdo, $data));
+        break;
+
+    case (preg_match('/^\/categories\/?$/', $requestUri) && $method === 'POST'):
+        $data = json_decode(file_get_contents('php://input'), true);
+        echo json_encode(createCategory($pdo, $data));
+        break;
+
+    case (preg_match('/^\/quotes\/?$/', $requestUri) && $method === 'PUT'):
+        $data = json_decode(file_get_contents('php://input'), true);
+        echo json_encode(updateQuote($pdo, $data));
+        break;
+
+    case (preg_match('/^\/authors\/?$/', $requestUri) && $method === 'PUT'):
+        $data = json_decode(file_get_contents('php://input'), true);
+        echo json_encode(updateAuthor($pdo, $data));
+        break;
+
+    case (preg_match('/^\/categories\/?$/', $requestUri) && $method === 'PUT'):
+        $data = json_decode(file_get_contents('php://input'), true);
+        echo json_encode(updateCategory($pdo, $data));
+        break;
+
+    case (preg_match('/^\/quotes\/?$/', $requestUri) && $method === 'DELETE'):
+        $data = json_decode(file_get_contents('php://input'), true);
+        echo json_encode(deleteQuote($pdo, $data['id']));
+        break;
+
+    case (preg_match('/^\/authors\/?$/', $requestUri) && $method === 'DELETE'):
+        $data = json_decode(file_get_contents('php://input'), true);
+        echo json_encode(deleteAuthor($pdo, $data['id']));
+        break;
+
+    case (preg_match('/^\/categories\/?$/', $requestUri) && $method === 'DELETE'):
+        $data = json_decode(file_get_contents('php://input'), true);
+        echo json_encode(deleteCategory($pdo, $data['id']));
+        break;
+
+    default:
+        http_response_code(404);
+        echo json_encode(['message' => 'Route Not Found']);
+        break;
+}
+?>
