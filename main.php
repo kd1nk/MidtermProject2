@@ -171,4 +171,5 @@ function deleteAuthor($pdo, $id) {
 function deleteCategory($pdo, $id) {
     $categoryExists = getCategories($pdo, ['id' => $id]);
     if (empty($categoryExists)) {
-php?>
+?>
+        }
